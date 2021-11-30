@@ -37,7 +37,7 @@ PubSubClient mqtt_client(espClient);
 unsigned long current_millis = 0;
 unsigned long prev_millis = 0;
 
-int mqtt_status = 30 * 1000; //30s - sending every 30s
+int mqtt_status = 10 * 1000; //10s - sending every 10s
 uint8_t mux_channels[NUMBER_MUX_CHANNELS] = { PIN_MUX0, PIN_MUX1, PIN_MUX2 }; 
 movingAvg* adc_channel_values[NUMBER_ADC_CHANNELS];
 
@@ -72,6 +72,7 @@ void setup() {
     Serial.print(config_data);   
     DynamicJsonDocument cjson(config_data.length());
     deserializeJson(cjson, config_data);
+    Serial.println("Deserialize done.");
 
     const char* c_wifiSsid     = cjson["wifiSsid"];  
     const char* c_wifiPassword = cjson["wifiPassword"];
@@ -81,38 +82,40 @@ void setup() {
     const char* c_mqttPassword = cjson["mqttPassword"];
     const char* c_mqttClientId = cjson["mqttClientID"];
 
-    Serial.print(c_wifiSsid);
+    Serial.println(c_wifiSsid);
 
     if (strlen(c_wifiSsid)) { 
-      sprintf(wifiSsid, "%s", c_wifiSsid); 
+      snprintf(wifiSsid, 1024, "%s", c_wifiSsid); 
     }
     if (strlen(c_wifiPassword)) { 
-      sprintf(wifiPassword, "%s", c_wifiPassword); 
-      }
+      snprintf(wifiPassword, 1024, "%s", c_wifiPassword); 
+    }
     if (strlen(c_mqttServer)) { 
-      sprintf(mqttServer, "%s", c_mqttServer); 
+      snprintf(mqttServer, 1024, "%s", c_mqttServer); 
     }
     if (strlen(c_mqttPort)) { 
       mqttPort = atoi(c_mqttPort);
     }
     if (strlen(c_mqttUser)) { 
-      sprintf(mqttUser, "%s", c_mqttUser);
+      snprintf(mqttUser, 1024, "%s", c_mqttUser);
     }
     if (strlen(c_mqttPassword)) { 
-      sprintf(mqttPassword, "%s", c_mqttPassword);
+      snprintf(mqttPassword, 1024, "%s", c_mqttPassword);
     }
     if (strlen(c_mqttClientId)) {
-      sprintf(mqttClientId, "%s", c_mqttClientId);
+       snprintf(mqttClientId, 1024, "%s", c_mqttClientId);
     }
-
   } else {
-    Serial.print("Config File missing.");
+    Serial.println("Config File missing.");
     for (;;)
       delay(1);
   }
   delay(100);
   cfile.close();
   
+  Serial.println("Configuring DIO/ADC.\n");
+
+
   // ADC/DIO -------------------------------------------------------------------------------
   // pinMode(PIN_ADC, ANALOG); - just a reminder, real code: analogRead(analogInPin);
   for (int i = 0; i < NUMBER_MUX_CHANNELS; i++) {
@@ -176,32 +179,20 @@ boolean mqtt_reconnect() {
 
 // ==================================== LOOP ==================================== 
 void loop() {
-  bool trigger_adc = false;
+  static bool trigger_adc = true;
 
   // put your main code here, to run repeatedly:
   mqtt_client.loop();
   current_millis = millis();
 
-  if ((int)(current_millis - prev_millis) >= mqtt_status) {
-    for (int i = 0; i < NUMBER_ADC_CHANNELS; i++) {
-      char mqtt_message[80];
-      char mqtt_topic[80];
-      int value = adc_channel_values[i]->getAvg();
-      snprintf(mqtt_message, 80, "{ value: %d }\n", value);
-      snprintf(mqtt_topic, 80, "/d1mini/adc_values/adc%d\n", i);
-      mqtt_client.publish(mqtt_topic, mqtt_message, 80);
-    }  
-    trigger_adc = true;
-    prev_millis = current_millis;
-  }
-
   if (trigger_adc)
   {
+    Serial.println("-- Sampling --");
     for (int i = 0; i < NUMBER_ADC_CHANNELS; i++) {
       int measured_value;
       //set mux
       (void)select_adc_channel(i);
-      delay(10);
+      delayMicroseconds(10);
       //read adc
       measured_value = analogRead(PIN_ANALOG);
       //push into filter
@@ -210,6 +201,22 @@ void loop() {
     trigger_adc = false;
   }
 
+  if ((int)(current_millis - prev_millis) >= mqtt_status) {
+    Serial.println("-- 30s reached --");
+    for (int i = 0; i < NUMBER_ADC_CHANNELS; i++) {
+      char mqtt_message[80];
+      char mqtt_topic[80];
+      int value = adc_channel_values[i]->getAvg();
+      snprintf(mqtt_message, 80, "{ value: %d }", value);
+      snprintf(mqtt_topic, 80, "d1mini/adc_values/adc%d", i);
+      Serial.println(mqtt_topic);
+      Serial.println(mqtt_message);
+      boolean status = mqtt_client.publish(mqtt_topic, mqtt_message, 80);
+      Serial.println(status);
+    }  
+    trigger_adc = true;
+    prev_millis = current_millis;
+  }
   //check if MQTT and Wifi connected (wifi is set to reconnect on auto)
   if (!mqtt_client.connected()) {
     mqtt_reconnect();
