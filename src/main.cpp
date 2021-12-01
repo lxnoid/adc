@@ -192,11 +192,12 @@ void loop() {
       int measured_value;
       //set mux
       (void)select_adc_channel(i);
-      delayMicroseconds(10);
+      delayMicroseconds(50);
       //read adc
       measured_value = analogRead(PIN_ANALOG);
       //push into filter
       adc_channel_values[i]->reading(measured_value);
+      delayMicroseconds(50);
     }
     trigger_adc = false;
   }
