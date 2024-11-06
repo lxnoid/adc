@@ -26,9 +26,9 @@ PubSubClient mqtt_client(espClient);
 #define NUMBER_MUX_CHANNELS 3
 #define NUMBER_ADC_CHANNELS 8 // should be 2 ^ NUMBER_MUX_CHANNELS
 
-#define  PIN_MUX0   D6
-#define  PIN_MUX1   D7
-#define  PIN_MUX2   D8
+#define  PIN_MUX0   D1 // changed
+#define  PIN_MUX1   D2 // changed
+#define  PIN_MUX2   D3 // changed
 #define  PIN_ANALOG A0
 
 #define NUMBER_OF_MOVING_VALUES 3
@@ -37,7 +37,7 @@ PubSubClient mqtt_client(espClient);
 unsigned long current_millis = 0;
 unsigned long prev_millis = 0;
 
-int mqtt_status = 10 * 1000; //10s - sending every 10s
+int mqtt_status = 30 * 1000; //30s instead 20s in order to improve precision
 uint8_t mux_channels[NUMBER_MUX_CHANNELS] = { PIN_MUX0, PIN_MUX1, PIN_MUX2 }; 
 movingAvg* adc_channel_values[NUMBER_ADC_CHANNELS];
 
@@ -192,12 +192,11 @@ void loop() {
       int measured_value;
       //set mux
       (void)select_adc_channel(i);
-      delayMicroseconds(50);
+      delayMicroseconds(100); // ge�ndert 10 auf 100
       //read adc
       measured_value = analogRead(PIN_ANALOG);
       //push into filter
       adc_channel_values[i]->reading(measured_value);
-      delayMicroseconds(50);
     }
     trigger_adc = false;
   }
@@ -208,7 +207,7 @@ void loop() {
       char mqtt_message[80];
       char mqtt_topic[80];
       int value = adc_channel_values[i]->getAvg();
-      snprintf(mqtt_message, 80, "{ value: %d }", value);
+      snprintf(mqtt_message, 80, "%d", value); //ge�ndert "{ values%d }"
       snprintf(mqtt_topic, 80, "d1mini/adc_values/adc%d", i);
       Serial.println(mqtt_topic);
       Serial.println(mqtt_message);
